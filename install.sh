@@ -37,7 +37,8 @@ esac
 # ------------------------------------------------------------------ packages
 lxqt=(lxqt-wayland-session lxqt-session lxqt-panel lxqt-runner lxqt-config lxqt-powermanagement lxqt-qtplugin
   lxqt-policykit lxqt-notificationd lxqt-themes pcmanfm-qt)
-tools=(labwc swaybg swayidle wlopm playerctl wtype grim slurp wl-clipboard brightnessctl kanshi wlr-randr jq)
+tools=(labwc swaybg swayidle wlopm playerctl wtype grim slurp wl-clipboard brightnessctl kanshi wlr-randr wdisplays jq
+  wireplumber pavucontrol-qt nm-connection-editor)
 if [[ $deps ]]; then
   say "packages for ${PRETTY_NAME:-this distro}"
   case $family in
@@ -61,14 +62,21 @@ if [[ $deps ]]; then
   if ! "${inst[@]}" "${pkgs[@]}"; then
     warn "installing everything at once failed; trying one package at a time"
     missing=()
-    for p in "${pkgs[@]}"; do "${inst[@]}" "$p" >/dev/null 2>&1 || missing+=("$p"); done
-    [[ ${#missing[@]} -eq 0 ]] || warn "not installed (not packaged on this release?): ${missing[*]}"
+    for p in "${pkgs[@]}"; do "${inst[@]}" "$p" >/dev/null || missing+=("$p"); done
+    [[ ${#missing[@]} -eq 0 ]] || warn "failed to install (see the errors above): ${missing[*]}"
   fi
 fi
 
 for c in labwc lxqt-panel startlxqtwayland python3 cmake cc; do
   have "$c" || { echo "Missing $c. Install it (see the README) and run the installer again." >&2; exit 1; }
 done
+# Optional tools: each one missing turns off one feature, so say which
+gone=()
+for c in swaybg swayidle swayosd-client wlopm playerctl wtype grim slurp wl-copy brightnessctl kanshi wlr-randr \
+  wdisplays jq notify-send wpctl powerprofilesctl libinput; do
+  have "$c" || gone+=("$c")
+done
+[[ ${#gone[@]} -eq 0 ]] || warn "not found, the features that use them won't work: ${gone[*]}"
 ver=$(labwc --version | grep -oE '[0-9]+\.[0-9]+' | head -1)
 if [[ $(printf '%s\n0.20\n' "$ver" | sort -V | head -1) != 0.20 ]]; then
   warn "labwc $ver is older than 0.20: thumbnails in Alt+Tab, the magnifier and some keybinds won't work"
@@ -87,7 +95,18 @@ backup() {
     echo "$1" >>"$bak/created"
   fi
 }
-place() { backup "$2"; install -Dm"${3:-644}" "$1" "$2"; }
+# Re-runs replace the configs with the repo's versions again. If yours differs (your own edits, or an older
+# version), it is kept next to it as <file>.before-update-<time> first.
+rerun=; [[ -d $bak ]] && rerun=1
+stamp=$(date +%Y%m%d-%H%M%S)
+place() {
+  backup "$2"
+  if [[ $rerun && -f $2 ]] && ! cmp -s "$1" "$2"; then
+    cp -a "$2" "$2.before-update-$stamp"
+    warn "kept your previous $(basename "$2") as $2.before-update-$stamp"
+  fi
+  install -Dm"${3:-644}" "$1" "$2"
+}
 
 # lxqt-panel writes panel.conf back when it exits, so it must be stopped while the file is replaced
 panel_running() { pgrep -u "$USER" -x lxqt-panel >/dev/null; }
@@ -97,7 +116,8 @@ panel() {
 }
 
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+restart_panel=
+trap 'rm -rf "$tmp"; [[ -z $restart_panel ]] || panel start' EXIT  # never leave the panel stopped
 
 # ------------------------------------------------------------------ scripts + native helpers
 say "scripts -> $bin"
@@ -131,12 +151,14 @@ place "$tmp/menu.xml" "$cfg/labwc/menu.xml"
 sed "s|@HOME@|$HOME|g" "$here/config/lxqt/panel.conf" >"$tmp/panel.conf"
 [[ $themer ]] || sed -i '/^icon=.*plasma-themer/d; /^ownIcon=true/d' "$tmp/panel.conf"
 [[ $ulp ]] || sed -i 's/, eco,/,/; /^\[eco\]/,/^$/d' "$tmp/panel.conf"
-restart_panel=
 if panel_running; then panel stop; sleep 1; restart_panel=1; fi
 place "$tmp/panel.conf" "$cfg/lxqt/panel.conf"
 
 # LXQt: labwc as the compositor, no second battery icon (quickpanel has one)
-backup "$cfg/lxqt/session.conf"; backup "$cfg/lxqt/lxqt-powermanagement.conf"
+# Only back these up if they exist: LXQt writes its own settings into them later, so uninstall mustn't delete them
+for f in "$cfg/lxqt/session.conf" "$cfg/lxqt/lxqt-powermanagement.conf"; do
+  if [[ -e $f ]]; then backup "$f"; fi
+done
 python3 - "$cfg/lxqt" <<'EOF'
 import configparser, io, sys
 from pathlib import Path
@@ -180,13 +202,16 @@ if [[ $patch ]]; then
 fi
 
 # ------------------------------------------------------------------ apply now if we're inside labwc
-if [[ -n ${LABWC_PID:-} ]] || pgrep -u "$USER" -x labwc >/dev/null; then
+if [[ $restart_panel ]]; then panel start; restart_panel=; fi
+if pgrep -u "$USER" -x labwc >/dev/null; then
   labwc --reconfigure 2>/dev/null || true
   if pgrep -u "$USER" -x quickpanel >/dev/null; then
-    pkill -u "$USER" -x quickpanel; sleep 0.5; setsid -f "$bin/quickpanel" --daemon >/dev/null 2>&1
+    pkill -u "$USER" -x quickpanel
+    # its tray icons only register once the panel's tray is up again
+    for _ in $(seq 30); do busctl --user status org.kde.StatusNotifierWatcher >/dev/null 2>&1 && break; sleep 0.5; done
+    setsid -f "$bin/quickpanel" --daemon >/dev/null 2>&1
   fi
 fi
-[[ $restart_panel ]] && panel start
 
 echo
 say "done"

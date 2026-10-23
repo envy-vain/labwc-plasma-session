@@ -46,10 +46,13 @@
 #include <QUuid>
 #include <QVBoxLayout>
 
+#include <fcntl.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <cstdio>
 #include <cstring>
 
 using namespace NetworkManager;
@@ -639,7 +642,7 @@ private:
         QHash<QString, Row *> old;
         old.swap(rows);
         while (listLay->count() > 1)
-            listLay->takeAt(0);
+            delete listLay->takeAt(0); // the layout item only; the row widget is reused
         int idx = 0;
         for (const auto &it : items) {
             const QString ssid = it.net->ssid();
@@ -725,7 +728,7 @@ private:
         QHash<QString, WiredRow *> old;
         old.swap(wiredRows);
         while (wiredLay->count())
-            wiredLay->takeAt(0);
+            delete wiredLay->takeAt(0); // the layout item only; the row widget is reused
         for (const auto &w : std::as_const(shown)) {
             WiredRow *r = old.take(w->uni());
             if (!r) {
@@ -877,17 +880,18 @@ private:
             return;
         const auto ap = net->referenceAccessPoint();
         const Sec sec = securityOf(ap);
+        const QString apUni = ap ? ap->uni() : QStringLiteral("/"); // "/" = let NetworkManager pick the AP
         const auto conn = savedConnections().value(ssid);
         pending = ssid;
         errorText.clear();
 
         if (conn && password.isEmpty()) {
-            watch(activateConnection(conn->path(), dev->uni(), ap->uni()));
+            watch(activateConnection(conn->path(), dev->uni(), apUni));
         } else if (conn) {
             // Saved but its password was wrong/missing: store the new one, then connect.
             NMVariantMapMap s = conn->settings()->toMap();
             s[QStringLiteral("802-11-wireless-security")][QStringLiteral("psk")] = password;
-            const QString path = conn->path(), devUni = dev->uni(), apUni = ap->uni();
+            const QString path = conn->path(), devUni = dev->uni();
             auto *w = new QDBusPendingCallWatcher(conn->update(s), this);
             connect(w, &QDBusPendingCallWatcher::finished, this, [this, w, path, devUni, apUni] {
                 w->deleteLater();
@@ -906,7 +910,7 @@ private:
                 s[QStringLiteral("802-11-wireless-security")][QStringLiteral("key-mgmt")] = sec == Sec::Sae ? QStringLiteral("sae") : QStringLiteral("wpa-psk");
                 s[QStringLiteral("802-11-wireless-security")][QStringLiteral("psk")] = password;
             }
-            watch(addAndActivateConnection(s, dev->uni(), ap->uni()));
+            watch(addAndActivateConnection(s, dev->uni(), apUni));
         }
         needPassword = false;
         schedule();
@@ -963,8 +967,23 @@ int main(int argc, char **argv)
     QByteArray cmd = argc > 1 && !daemon ? QByteArray(argv[1]) : QByteArrayLiteral("wifi");
     for (int i = 2; i < argc; ++i)
         cmd += ' ' + QByteArray(argv[i]);
-    if (sendToRunning(daemon ? "noop" : cmd.constData()))
+    const char *msg = daemon ? "noop" : cmd.constData();
+    if (sendToRunning(msg))
         return 0;
+    // One resident instance: hold a lock for our whole lifetime. If another instance holds it, it is still
+    // building its panels (blocking D-Bus calls) and not listening yet, so wait for its socket instead of
+    // starting a second copy (which would also delete the first one's socket).
+    const QByteArray lockPath = (socketPath() + QStringLiteral(".lock")).toLocal8Bit();
+    const int lock = open(lockPath.constData(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+    if (lock < 0 || flock(lock, LOCK_EX | LOCK_NB) != 0) {
+        for (int i = 0; i < 100; ++i) { // up to 30 s
+            usleep(300000);
+            if (sendToRunning(msg))
+                return 0;
+        }
+        fprintf(stderr, "quickpanel: another instance holds %s but isn't answering\n", lockPath.constData());
+        return 1;
+    }
 
     QApplication::setDesktopFileName(QStringLiteral("quickpanel")); // Wayland app_id, matched by the labwc window rule
     QApplication app(argc, argv);
@@ -992,9 +1011,12 @@ int main(int argc, char **argv)
         }
     };
 
-    QLocalServer::removeServer(socketPath());
+    QLocalServer::removeServer(socketPath()); // safe: we hold the lock, so any socket left there is stale
     QLocalServer server;
-    server.listen(socketPath());
+    if (!server.listen(socketPath())) {
+        fprintf(stderr, "quickpanel: can't listen on %s: %s\n", qPrintable(socketPath()), qPrintable(server.errorString()));
+        return 1;
+    }
     QObject::connect(&server, &QLocalServer::newConnection, &server, [&] {
         while (auto *s = server.nextPendingConnection()) {
             QObject::connect(s, &QLocalSocket::readyRead, s, [s, &handle] {

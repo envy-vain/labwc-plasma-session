@@ -338,7 +338,7 @@ void VolumePanel::refresh()
 void VolumePanel::syncRows(QVBoxLayout *lay, QLabel *header, const QList<const Item *> &items)
 {
     while (lay->count())
-        lay->takeAt(0);
+        delete lay->takeAt(0); // the layout item only; the row widget is reused
     // Drop rows of this kind that no longer exist
     const Kind kind = lay == outLay ? Sink : lay == inLay ? Source : Stream;
     const QString prefix = QString::number(kind) + QLatin1Char(':');

@@ -11,7 +11,7 @@ cd "$build"
 sudo pacman -S --needed --noconfirm base-devel meson scdoc wayland-protocols xorg-xwayland git
 
 # Follow the repo's labwc version; pkgrel x.9 sorts above the repo's own x / x.1 builds
-repo_ver=$(pacman -Si labwc | awk '/^Version/{print $3; exit}')
+repo_ver=$(LC_ALL=C pacman -Si labwc | awk '/^Version/{print $3; exit}')
 ver=${repo_ver%-*}; rel=${repo_ver##*-}; rel=${rel%%.*}
 sed -i -e "s/^pkgver=.*/pkgver=$ver/" -e "s/^pkgrel=.*/pkgrel=$rel.9/" PKGBUILD
 

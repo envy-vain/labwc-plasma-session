@@ -229,8 +229,7 @@ BatteryPanel::BatteryPanel()
         if (r == QSystemTrayIcon::Trigger || r == QSystemTrayIcon::MiddleClick)
             toggleVisible();
     });
-    updateTray();
-    tray->show();
+    updateTray(); // shows the tray icon only when there is a battery (desktops and VMs have none)
 }
 
 void BatteryPanel::aboutToOpen()
@@ -272,6 +271,9 @@ void BatteryPanel::profileChanged(const QString &, const QVariantMap &changed, c
 
 void BatteryPanel::updateTray()
 {
+    const bool present = disp.value(QStringLiteral("IsPresent")).toBool();
+    if (tray->isVisible() != present)
+        tray->setVisible(present);
     const int pct = qRound(disp.value(QStringLiteral("Percentage")).toDouble());
     const auto st = disp.value(QStringLiteral("State")).toUInt();
     const bool plugged = st == Charging || st == Full || st == PendingCharge;
@@ -302,8 +304,10 @@ void BatteryPanel::updatePopup()
     details->setText(d.join(QStringLiteral(" · ")));
     details->setVisible(!d.isEmpty());
 
-    for (auto *b : profiles->buttons())
+    for (auto *b : profiles->buttons()) { // no power-profiles-daemon (TLP, tuned): no profile buttons
         b->setChecked(b->property("profile").toString() == profile);
+        b->setVisible(!profile.isEmpty());
+    }
     ecoB->setChecked(eco);
     ecoB->setVisible(QFile::exists(kEcoCmd));
 

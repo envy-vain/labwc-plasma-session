@@ -31,7 +31,10 @@ def keys(mods, *ks):
         args += ['-k', k]
     for m in reversed(mods):
         args += ['-m', m]
-    subprocess.run(args)
+    try:
+        subprocess.run(args)
+    except FileNotFoundError:
+        print('touchpad-gestures: wtype is not installed', file=sys.stderr)
 
 
 def zoom(steps):
@@ -81,8 +84,13 @@ class Gestures:
 def main():
     g = Gestures()
     while True:
-        p = subprocess.Popen(['stdbuf', '-oL', 'libinput', 'debug-events'],
-                             stdout=subprocess.PIPE, text=True, bufsize=1)
+        try:
+            p = subprocess.Popen(['stdbuf', '-oL', 'libinput', 'debug-events'],
+                                 stdout=subprocess.PIPE, text=True, bufsize=1)
+        except FileNotFoundError:
+            print('touchpad-gestures: `libinput debug-events` is missing (libinput-tools / libinput-utils)',
+                  file=sys.stderr)
+            return 1
         for line in p.stdout:
             g.feed(line)
         if p.wait() != 0:
@@ -92,4 +100,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

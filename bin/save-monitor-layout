@@ -1,8 +1,8 @@
 #!/bin/bash
 # Saves the current monitor layout (as arranged in wdisplays) as a kanshi profile, so it's restored on login/hotplug.
 # Each distinct set of plugged-in monitors gets its own profile; re-running replaces that set's profile.
-cfg=$HOME/.config/kanshi/config
-touch "$cfg"
+cfg=${XDG_CONFIG_HOME:-$HOME/.config}/kanshi/config
+mkdir -p "$(dirname "$cfg")" && touch "$cfg" || exit 1
 json=$(wlr-randr --json) || exit 1
 # Profile name = sorted output names of the enabled+disabled set currently connected
 name=$(jq -r '[.[].name] | sort | join("_")' <<<"$json" | tr -c 'A-Za-z0-9_\n' '_')

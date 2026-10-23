@@ -20,6 +20,7 @@ if [[ -d $bak/files ]]; then
   (cd "$bak/files" && find . \( -type f -o -type l \) -print0) | while IFS= read -r -d '' f; do
     f=${f#.}
     mkdir -p "$(dirname "$f")"
+    rm -f -- "$f" # a symlink there now (e.g. wifi-panel) must not be written through
     cp -a "$bak/files$f" "$f"
   done
 fi
@@ -31,4 +32,6 @@ fi
 if pgrep -u "$USER" -x labwc >/dev/null; then labwc --reconfigure 2>/dev/null || true; fi
 echo "Restored your previous configs. Log out and back in to finish."
 echo "Left as is: the packages, and your membership of the input group (leave it with: sudo gpasswd -d $USER input)."
-echo "Patched labwc (if you built it): sudo pacman -S labwc"
+if [[ -e /etc/pacman.d/hooks/labwc-patched.hook ]]; then
+  echo "Patched labwc: sudo pacman -S labwc && sudo rm /etc/pacman.d/hooks/labwc-patched.hook"
+fi

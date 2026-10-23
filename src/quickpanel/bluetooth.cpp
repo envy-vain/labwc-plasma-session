@@ -364,7 +364,7 @@ void BluetoothPanel::refresh()
     QHash<QString, BtRow *> old;
     old.swap(rows);
     while (list->count())
-        list->takeAt(0);
+        delete list->takeAt(0); // the layout item only; the row widget is reused
     for (const auto &d : devs) {
         BtRow *r = old.take(d.path);
         if (!r) {
@@ -481,7 +481,7 @@ void BluetoothPanel::remap()
 void BluetoothPanel::hideEvent(QHideEvent *e)
 {
     mappedSize = QSize();
-    if (!remapping && scanning)
+    if (!remapping && scanning && pairing.isEmpty()) // a Pair() in flight finishes first (see pair())
         setScanning(false);
     Popup::hideEvent(e);
 }
@@ -510,9 +510,11 @@ void BluetoothPanel::setScanning(bool on)
         scanTimer->stop();
     // Pairable is the kernel's "bondable" flag: with it off, Pair() still works but makes a one-time
     // link and stores no key, so the device is forgotten as soon as it disconnects. Blueman used to
-    // switch it on; keep it on only while the pairing list is open.
+    // switch it on; keep it on only while the pairing list is open, then put back what it was.
+    if (on)
+        pairableBefore = objects[adapter][kAdapter].value(QStringLiteral("Pairable")).toBool();
     auto p = QDBusMessage::createMethodCall(kBluez, adapter, kProps, QStringLiteral("Set"));
-    p << kAdapter << QStringLiteral("Pairable") << QVariant::fromValue(QDBusVariant(on));
+    p << kAdapter << QStringLiteral("Pairable") << QVariant::fromValue(QDBusVariant(on || pairableBefore));
     if (on) // pair() can follow right away, so make sure it has landed
         QDBusConnection::systemBus().call(p);
     else
@@ -549,7 +551,9 @@ void BluetoothPanel::pair(const QString &path)
         const QString name = objects[path][kDevice].value(QStringLiteral("Alias")).toString();
         if (w->isError() && w->error().name() != QStringLiteral("org.bluez.Error.AlreadyExists")) {
             error = QStringLiteral("Couldn't pair with %1: %2. Make sure it's in pairing mode and try again.").arg(name, w->error().message());
-            if (scanning) // resume the radio scan for another try
+            if (scanning && !isVisible()) // the popup was closed while pairing
+                setScanning(false);
+            else if (scanning) // resume the radio scan for another try
                 QDBusConnection::systemBus().asyncCall(QDBusMessage::createMethodCall(kBluez, adapter, kAdapter, QStringLiteral("StartDiscovery")));
             schedule();
             return;

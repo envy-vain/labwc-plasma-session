@@ -55,6 +55,7 @@ private:
     QSet<QString> busy;                // devices with a connect/disconnect/pair in flight
     QSet<QString> pairing;             // subset of busy: Pair() in flight
     bool scanning = false;
+    bool pairableBefore = false;       // adapter's Pairable before we switched it on, restored after
     bool remapping = false;
     QElapsedTimer remapAt;             // ignore focus-loss events for a moment after a re-map
     QSize mappedSize;                  // size the popup was shown at; labwc only places it on map

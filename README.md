@@ -25,7 +25,8 @@ Then log out and choose **LXQt (Wayland)** on the login screen. The installer:
   configs, and sets labwc as LXQt's compositor;
 - adds you to the `input` group so the gesture daemon can read touchpad events (see [Notes](#notes)).
 
-It's safe to re-run. `./install.sh --labwc-patch` also builds labwc with a close button on the Alt+Tab
+It's safe to re-run (e.g. after `git pull`): configs are replaced with the repo's versions again, and any you
+changed are kept beside them as `<file>.before-update-<time>`. `./install.sh --labwc-patch` also builds labwc with a close button on the Alt+Tab
 thumbnails (Arch-based distros only).
 
 ## What you get
@@ -34,9 +35,9 @@ thumbnails (Arch-based distros only).
 |---|---|
 | **Plasma shortcuts** | Meta opens the menu, Meta+D shows the desktop, Meta+PgUp/PgDn maximize/minimize, Meta+arrows snap, Meta+Shift+arrows move to the next screen, Alt+F3 window menu, Meta+Ctrl+Esc kills a window, Meta+W/G list all windows |
 | **4 desktops, 2×2 grid like Plasma** | Meta+Ctrl+arrows (wrap around), Meta+Ctrl+Shift+arrows take the window along, Ctrl/Meta+F1–F4, scroll on the desktop |
-| **Touchpad** | natural scrolling, tap to click, **3-finger swipe** = switch desktop, **3-finger pinch** = live zoom that follows your fingers (Meta+= / Meta+- / Meta+0 too) |
-| **Centered OSD** | volume and brightness keys (Shift = 1% steps, below 10% brightness always 1% steps), mic mute, volume up to 150% like Plasma, charger plugged/unplugged, power profile (Meta+B cycles it) |
-| **quickpanel** | native tray icons and popups for Wi-Fi (with a speed test), Bluetooth (scan and pair right in the popup), battery (power profiles, charge limit) and volume. One small resident Qt process, event-driven, no polling |
+| **Touchpad** | natural scrolling, tap to click, **3-finger swipe** = switch desktop, **3-finger pinch** = live zoom that follows your fingers (or Meta+= / Meta+-; Meta+0 turns the zoom on/off) |
+| **Centered OSD** | volume and brightness keys (Shift = 1% steps; at 10% brightness and below, always 1% steps), mic mute, volume up to 150% like Plasma, charger plugged/unplugged, power profile (Meta+B cycles it) |
+| **quickpanel** | native tray icons and popups for Wi-Fi (with a speed test against Cloudflare, only when you press it; it can use a few hundred MB on a fast line), Bluetooth (scan and pair right in the popup), battery (power profiles, charge limit) and volume (the battery icon only appears if there is a battery). One small resident Qt process, event-driven, no polling |
 | **Panel** | CPU temperature and live wattage (whole laptop + CPU package) from `panelstat`, a tiny C helper so the 5-second refresh costs almost nothing |
 | **Screen off** | after 3 minutes idle, but never while a video or music is playing |
 | **Screenshots** | Print = whole screen, Shift+Print or Meta+Shift+S = select an area; saved to ~/Pictures/Screenshots and copied to the clipboard |
@@ -57,8 +58,9 @@ What the installer installs, for doing it by hand:
 - **Session:** labwc (0.20 or newer), lxqt-wayland-session, lxqt-session, lxqt-panel, lxqt-runner, lxqt-config,
   lxqt-powermanagement, lxqt-qtplugin, lxqt-policykit, lxqt-notificationd, lxqt-themes, pcmanfm-qt
 - **Tools:** swaybg, swayidle, swayosd (optional: without it you get notifications instead of the OSD), wlopm,
-  playerctl, wtype, grim, slurp, wl-clipboard, brightnessctl, kanshi, wlr-randr, jq, notify-send (libnotify),
-  `libinput debug-events` (libinput-tools / libinput-utils), python3
+  playerctl, wtype, grim, slurp, wl-clipboard, brightnessctl, kanshi, wlr-randr, wdisplays, jq, notify-send
+  (libnotify), `libinput debug-events` (libinput-tools / libinput-utils), wireplumber (`wpctl`), pavucontrol-qt and
+  nm-connection-editor (the settings buttons in the popups), python3
 - **To build quickpanel:** cmake, a C++20 compiler, Qt 6 base (Widgets, Network, DBus), KF6 NetworkManagerQt, libpulse
 
 quickpanel talks to NetworkManager, BlueZ, UPower, power-profiles-daemon (or tuned-ppd) and PipeWire/PulseAudio over

@@ -3,7 +3,7 @@
 
 # Wallpaper: ~/.config/labwc/wallpaper (any image, or a link to one) if you made it, else the current
 # plasma-themer wallpaper, else a plain color. LXQt's desktop (pcmanfm-qt) is turned off by the installer.
-wp=$HOME/.config/labwc/wallpaper
+wp=${XDG_CONFIG_HOME:-$HOME/.config}/labwc/wallpaper
 [ -e "$wp" ] || wp=$HOME/.local/share/plasma-themer/current/wallpaper
 if [ -e "$wp" ]; then swaybg -m fill -i "$wp" >/dev/null 2>&1 &
 else swaybg -c '#0b0b10' >/dev/null 2>&1 &

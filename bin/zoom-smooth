@@ -1,5 +1,5 @@
 #!/bin/sh
-# Zoom for labwc's magnifier, used by the 3-finger pinch (libinput-gestures) and Super+= / Super+-.
+# Zoom for labwc's magnifier, used by Super+= / Super+-.
 #   zoom-smooth in|out
 # Sends 8 small steps (8 x 0.05 = 0.4) in ONE wtype call, so it is instant.
 # The raw one-step actions are bound to Super+Shift+F11 / F12 in rc.xml.

@@ -28,6 +28,7 @@ static long long readll(const char *path)
 static int reads(const char *path, char *buf, size_t n)
 {
     FILE *f = fopen(path, "re");
+    buf[0] = 0;
     if (!f)
         return 0;
     int ok = fgets(buf, (int)n, f) != NULL;
@@ -40,7 +41,7 @@ static int temp(void)
 {
     DIR *d = opendir("/sys/class/hwmon");
     struct dirent *e;
-    long long t = 0;
+    long long mc = -1; // millidegrees
     char p[300], name[64];
     while (d && (e = readdir(d))) {
         if (e->d_name[0] == '.')
@@ -49,28 +50,34 @@ static int temp(void)
         if (reads(p, name, sizeof name)
             && (!strcmp(name, "coretemp") || !strcmp(name, "k10temp") || !strcmp(name, "zenpower"))) {
             snprintf(p, sizeof p, "/sys/class/hwmon/%s/temp1_input", e->d_name);
-            t = readll(p) / 1000;
+            mc = readll(p);
             break;
         }
     }
     if (d)
         closedir(d);
-    printf("%s %lld°C\n", t >= 85 ? "󰸁" : "󰔏", t);
+    if (mc >= 0) // no Intel/AMD CPU sensor (VM, ARM...): leave the panel label empty
+        printf("%s %lld°C", mc >= 85000 ? "󰸁" : "󰔏", mc / 1000);
+    putchar('\n');
     return 0;
 }
 
-// First power_supply of type Battery (BAT0, BAT1, CMB0...), or 0 if there is none
+// First system battery (BAT0, BAT1, CMB0...), or 0 if there is none. Wireless mice/keyboards also show up
+// as type Battery, with scope Device: skip those.
 static int battery(char *out, size_t n)
 {
     DIR *d = opendir("/sys/class/power_supply");
     struct dirent *e;
-    char p[300], type[32];
+    char p[300], type[32], scope[32];
     int found = 0;
     while (d && !found && (e = readdir(d))) {
         if (e->d_name[0] == '.')
             continue;
         snprintf(p, sizeof p, "/sys/class/power_supply/%s/type", e->d_name);
-        if (reads(p, type, sizeof type) && !strcmp(type, "Battery")) {
+        if (!reads(p, type, sizeof type) || strcmp(type, "Battery"))
+            continue;
+        snprintf(p, sizeof p, "/sys/class/power_supply/%s/scope", e->d_name);
+        if (!reads(p, scope, sizeof scope) || strcmp(scope, "Device")) {
             snprintf(out, n, "/sys/class/power_supply/%s", e->d_name);
             found = 1;
         }
@@ -87,11 +94,20 @@ static int watts(void)
     const char *sep = "";
     if (battery(bat, sizeof bat)) {
         snprintf(p, sizeof p, "%s/power_now", bat);
-        long long uw = readll(p);
+        double w = readll(p) / 1e6;
+        if (w < 0) { // some batteries only report current and voltage
+            snprintf(p, sizeof p, "%s/current_now", bat);
+            long long ua = readll(p);
+            snprintf(p, sizeof p, "%s/voltage_now", bat);
+            long long uv = readll(p);
+            w = ua >= 0 && uv >= 0 ? ua / 1e6 * (uv / 1e6) : -1;
+        }
         snprintf(p, sizeof p, "%s/status", bat);
         reads(p, status, sizeof status);
-        printf("%s%.1f W", strcmp(status, "Charging") ? "" : "+", (uw < 0 ? 0 : uw) / 1e6);
-        sep = "  ";
+        if (w >= 0) {
+            printf("%s%.1f W", strcmp(status, "Charging") ? "" : "+", w);
+            sep = "  ";
+        }
     }
 
     snprintf(p, sizeof p, "%s/energy_uj", rapl);
@@ -100,9 +116,13 @@ static int watts(void)
     clock_gettime(CLOCK_MONOTONIC, &ts);
     long long now = ts.tv_sec * 1000000000LL + ts.tv_nsec;
 
-    const char *rt = getenv("XDG_RUNTIME_DIR");
+    const char *rt = getenv("XDG_RUNTIME_DIR"); // private dir; never a shared /tmp file
+    if (!rt) {
+        putchar('\n');
+        return 0;
+    }
     char state[256];
-    snprintf(state, sizeof state, "%s/panelstat-watts.last", rt ? rt : "/tmp");
+    snprintf(state, sizeof state, "%s/panelstat-watts.last", rt);
     FILE *f = fopen(state, "re");
     long long le, lt;
     if (f && e >= 0 && fscanf(f, "%lld %lld", &le, &lt) == 2 && now > lt) {
