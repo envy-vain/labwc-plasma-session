@@ -8,6 +8,8 @@ the login screen when you want your battery to last.
 On my ThinkPad L13 (i7-1165G7), the whole session uses **~1.7 GB of RAM** and the laptop idles at
 **~3.7 W** for the entire machine.
 
+![quickpanel's battery, volume and Bluetooth popups on the LXQt panel](screenshots/quickpanel-popups.png)
+
 ## Install
 
 ```sh
