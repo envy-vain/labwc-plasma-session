@@ -1,0 +1,18 @@
+#!/bin/sh
+# Screenshots on labwc (Wayland). screengrab can't capture here, so use grim.
+#   screenshot        whole screen
+#   screenshot area   drag to select a region (slurp)
+# Saves to ~/Pictures/Screenshots and copies the image to the clipboard.
+dir="$HOME/Pictures/Screenshots"
+mkdir -p "$dir"
+file="$dir/Screenshot_$(date +%Y%m%d_%H%M%S).png"
+
+if [ "$1" = area ]; then
+    geom=$(slurp) || exit 0   # Esc cancels
+    grim -g "$geom" "$file" || exit 1
+else
+    grim "$file" || exit 1
+fi
+
+wl-copy --type image/png < "$file"
+notify-send -i "$file" -t 3000 "Screenshot saved" "$(basename "$file") — also copied to the clipboard"

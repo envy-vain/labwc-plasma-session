@@ -1,0 +1,113 @@
+diff --color -ruN -x build a/include/cycle.h b/include/cycle.h
+--- a/include/cycle.h	2026-10-20 19:31:30.487477639 +0300
++++ b/include/cycle.h	2026-10-20 19:31:30.508449141 +0300
+@@ -103,6 +103,9 @@
+ /* Re-initialize the window switcher */
+ void cycle_reinitialize(void);
+ 
++/* Close the selected view in the window switcher, keeping it open */
++void cycle_close_selected(void);
++
+ /* Immediately cycle to next/previous window */
+ void cycle_immediate(enum lab_cycle_dir direction,
+ 	struct cycle_filter filter);
+@@ -127,6 +130,9 @@
+ struct cycle_osd_item {
+ 	struct view *view;
+ 	struct wlr_scene_tree *tree;
++	/* optional close button (thumbnail style), NULL if none */
++	struct wlr_scene_tree *close_button;
++	int close_button_size;
+ 	struct wl_list link;
+ };
+ 
+diff --color -ruN -x build a/src/cycle/cycle.c b/src/cycle/cycle.c
+--- a/src/cycle/cycle.c	2026-10-20 19:31:30.489545257 +0300
++++ b/src/cycle/cycle.c	2026-10-20 19:33:32.612630037 +0300
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ #include "cycle.h"
+ #include <assert.h>
++#include <wlr/types/wlr_cursor.h>
+ #include <wlr/types/wlr_scene.h>
+ #include <wlr/util/box.h>
+ #include <wlr/util/log.h>
+@@ -125,10 +126,33 @@
+ 	assert(server.input_mode == LAB_INPUT_STATE_CYCLE);
+ 
+ 	struct cycle_osd_item *item = node_cycle_osd_item_from_node(node);
++
++	if (item->close_button && item->close_button->node.enabled) {
++		int lx, ly;
++		wlr_scene_node_coords(&item->close_button->node, &lx, &ly);
++		double cx = server.seat.cursor->x;
++		double cy = server.seat.cursor->y;
++		int size = item->close_button_size;
++		if (cx >= lx && cx < lx + size && cy >= ly && cy < ly + size) {
++			/* Window switcher is refreshed once the view is destroyed */
++			view_close(item->view);
++			return;
++		}
++	}
++
+ 	server.cycle.selected_view = item->view;
+ 	cycle_finish(/*switch_focus*/ true);
+ }
+ 
++void
++cycle_close_selected(void)
++{
++	assert(server.input_mode == LAB_INPUT_STATE_CYCLE);
++	if (server.cycle.selected_view) {
++		view_close(server.cycle.selected_view);
++	}
++}
++
+ static void
+ restore_preview_node(void)
+ {
+diff --color -ruN -x build a/src/cycle/osd-thumbnail.c b/src/cycle/osd-thumbnail.c
+--- a/src/cycle/osd-thumbnail.c	2026-10-20 19:31:30.489613081 +0300
++++ b/src/cycle/osd-thumbnail.c	2026-10-20 19:31:38.201644705 +0300
+@@ -197,6 +197,26 @@
+ 	int y = title_y - padding - icon_size + 10; /* slide by 10px */
+ 	wlr_scene_node_set_position(&icon_buffer->scene_buffer->node, x, y);
+ 
++	/* close button in the top-right corner */
++	int close_size = switcher_theme->title_height + 4;
++	struct wlr_scene_tree *close_tree = lab_wlr_scene_tree_create(tree);
++	lab_wlr_scene_rect_create(close_tree, close_size, close_size,
++		theme->osd_border_color);
++	struct wlr_scene_rect *close_bg = lab_wlr_scene_rect_create(close_tree,
++		close_size - 2, close_size - 2, theme->osd_bg_color);
++	wlr_scene_node_set_position(&close_bg->node, 1, 1);
++	struct scaled_font_buffer *close_label =
++		scaled_font_buffer_create(close_tree);
++	scaled_font_buffer_update(close_label, "\u2715", close_size,
++		&rc.font_osd, theme->osd_label_text_color, theme->osd_bg_color);
++	wlr_scene_node_set_position(&close_label->scene_buffer->node,
++		(close_size - close_label->width) / 2,
++		(close_size - close_label->height) / 2);
++	wlr_scene_node_set_position(&close_tree->node,
++		switcher_theme->item_width - padding - close_size, padding);
++	item->base.close_button = close_tree;
++	item->base.close_button_size = close_size;
++
+ 	return item;
+ }
+ 
+diff --color -ruN -x build a/src/input/keyboard.c b/src/input/keyboard.c
+--- a/src/input/keyboard.c	2026-10-20 19:31:30.490004668 +0300
++++ b/src/input/keyboard.c	2026-10-20 19:31:30.508569456 +0300
+@@ -481,6 +481,11 @@
+ 			cycle_finish(/*switch_focus*/ false);
+ 			return true;
+ 		}
++		if (keyinfo->translated.syms[i] == XKB_KEY_Delete) {
++			/* Delete closes the selected window */
++			cycle_close_selected();
++			return true;
++		}
+ 		if (keyinfo->translated.syms[i] == XKB_KEY_Up
+ 				|| keyinfo->translated.syms[i] == XKB_KEY_Left) {
+ 			/* Up/Left cycles the window backward */

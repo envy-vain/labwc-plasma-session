@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+# Plasma-style touchpad gestures for labwc, read straight from `libinput debug-events`:
+#   3-finger swipe   switch virtual desktop (presses labwc's Super+Ctrl+arrow GoToDesktop keybinds)
+#   3-finger pinch   live zoom: labwc's magnifier follows the fingers while they move, instead of
+#                    jumping once at the end (Super+Shift+F11/F12 = one ZoomIn/ZoomOut step of 0.05)
+# libinput watches every device through udev, so this keeps working after suspend or re-plugging.
+# Needs the `input` group (the installer adds you; log out and back in once). Started from labwc autostart.
+import math
+import re
+import subprocess
+import sys
+import time
+
+FINGERS = 3
+SWIPE_MIN = 50            # distance (libinput units) a swipe must travel to count
+STEPS_PER_DOUBLING = 24   # zoom strength: steps sent when the fingers spread to 2x distance (24 x 0.05 = +1.2)
+
+# Natural direction, like Plasma: fingers left = the desktop to the right. Up/down move a row in the
+# 2x2 desktop grid (rc.xml maps Super+Ctrl+Up/Down to two steps).
+SWIPE_KEY = {'left': 'Right', 'right': 'Left', 'up': 'Down', 'down': 'Up'}
+
+DELTA = re.compile(r'(-?[\d.]+)/\s*(-?[\d.]+)')  # "dx/dy" of a swipe/pinch update
+SCALE = re.compile(r'([\d.]+)\s*@')               # pinch scale, relative to the start of the pinch
+
+
+def keys(mods, *ks):
+    args = ['wtype']
+    for m in mods:
+        args += ['-M', m]
+    for k in ks:
+        args += ['-k', k]
+    for m in reversed(mods):
+        args += ['-m', m]
+    subprocess.run(args)
+
+
+def zoom(steps):
+    keys(('logo', 'shift'), *['F11' if steps > 0 else 'F12'] * abs(steps))
+
+
+class Gestures:
+    def __init__(self):
+        self.kind = None  # 'swipe' | 'pinch' while a 3-finger gesture is in progress
+        self.dx = self.dy = 0.0
+        self.applied = 0
+
+    def feed(self, line):
+        if 'GESTURE_' not in line or ' +' not in line:
+            return
+        fields = line.split(' +', 1)[1].split()  # "1.234s" fingers ...
+        if 'GESTURE_SWIPE_BEGIN' in line or 'GESTURE_PINCH_BEGIN' in line:
+            ok = len(fields) > 1 and fields[1] == str(FINGERS)
+            self.kind = ('swipe' if 'SWIPE' in line else 'pinch') if ok else None
+            self.dx = self.dy = 0.0
+            self.applied = 0
+        elif 'GESTURE_SWIPE_UPDATE' in line and self.kind == 'swipe':
+            m = DELTA.search(line.split(' +', 1)[1])
+            if m:
+                self.dx += float(m.group(1))
+                self.dy += float(m.group(2))
+        elif 'GESTURE_SWIPE_END' in line and self.kind == 'swipe':
+            self.kind = None
+            if 'cancelled' not in line and max(abs(self.dx), abs(self.dy)) >= SWIPE_MIN:
+                if abs(self.dx) > abs(self.dy):
+                    d = 'left' if self.dx < 0 else 'right'
+                else:
+                    d = 'up' if self.dy < 0 else 'down'
+                keys(('logo', 'ctrl'), SWIPE_KEY[d])
+        elif 'GESTURE_PINCH_UPDATE' in line and self.kind == 'pinch':
+            m = SCALE.search(line)
+            if m and float(m.group(1)) > 0:
+                # log2 makes zooming in and out symmetric
+                target = round(STEPS_PER_DOUBLING * math.log2(float(m.group(1))))
+                if target != self.applied:
+                    zoom(target - self.applied)
+                    self.applied = target
+        elif 'GESTURE_PINCH_END' in line:
+            self.kind = None
+
+
+def main():
+    g = Gestures()
+    while True:
+        p = subprocess.Popen(['stdbuf', '-oL', 'libinput', 'debug-events'],
+                             stdout=subprocess.PIPE, text=True, bufsize=1)
+        for line in p.stdout:
+            g.feed(line)
+        if p.wait() != 0:
+            print('touchpad-gestures: libinput debug-events failed; are you in the input group '
+                  '(log out and back in after joining)?', file=sys.stderr)
+        time.sleep(5)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,74 @@
+#!/bin/bash
+# Fn/media keys for labwc (bound in ~/.config/labwc/rc.xml): centered OSD via swayosd (server started by
+# labwc autostart); a plain self-replacing notification where swayosd isn't packaged (Fedora).
+# usage: fnkey vol-up|vol-down|bright-up|bright-down [step%, default 5] | mute|mic-mute|power-profile
+
+# Holding a key repeats ~25x/s: drop presses while one is still running so they can't pile up.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/fnkey.lock"
+flock -n 9 || exit 0
+
+pct=${2:-5}
+sink=@DEFAULT_AUDIO_SINK@
+src=@DEFAULT_AUDIO_SOURCE@
+command -v swayosd-client >/dev/null && osd=1 || osd=
+
+# fallback OSD: $1 text, $2 icon, $3 level 0-100 (optional)
+note() {
+    notify-send -t 1200 -i "$2" -h string:x-canonical-private-synchronous:fnkey ${3:+-h "int:value:$3"} "$1" 9>&-
+}
+level() { wpctl get-volume "$1" | awk '{printf "%d", $2 * 100}'; }
+muted() { wpctl get-volume "$1" | grep -q MUTED; }
+
+case $1 in
+vol-up | vol-down)
+    [[ $1 == vol-up ]] && d=+ || d=-
+    wpctl set-mute "$sink" 0
+    if [[ $osd ]]; then
+        swayosd-client --output-volume "$d$pct" --max-volume 150
+    else
+        wpctl set-volume -l 1.5 "$sink" "$pct%$d"
+        note "Volume $(level "$sink")%" audio-volume-high "$(level "$sink")"
+    fi
+    ;;
+mute)
+    if [[ $osd ]]; then swayosd-client --output-volume mute-toggle
+    else
+        wpctl set-mute "$sink" toggle
+        if muted "$sink"; then note "Muted" audio-volume-muted; else note "Volume $(level "$sink")%" audio-volume-high; fi
+    fi
+    ;;
+mic-mute)
+    if [[ $osd ]]; then swayosd-client --input-volume mute-toggle
+    else
+        wpctl set-mute "$src" toggle
+        if muted "$src"; then note "Microphone off" microphone-sensitivity-muted; else note "Microphone on" audio-input-microphone; fi
+    fi
+    ;;
+bright-up | bright-down)
+    # Set directly with brightnessctl (swayosd's own stepping is uneven near the bottom); 1% steps below 10%, floor 1%
+    cur=$(brightnessctl -m -c backlight | awk -F, 'NR==1{sub("%","",$4); print $4}')
+    if [[ -z $2 ]] && { { [[ $1 == bright-down ]] && (( cur <= 10 )); } || { [[ $1 == bright-up ]] && (( cur < 10 )); }; }; then pct=1; fi
+    [[ $1 == bright-up ]] && new=$((cur + pct)) || new=$((cur - pct))
+    (( new < 1 )) && new=1
+    (( new > 100 )) && new=100
+    brightnessctl -q -c backlight set "$new%"
+    if [[ $osd ]]; then
+        swayosd-client --custom-icon display-brightness-symbolic --custom-progress "$(awk "BEGIN{print $new/100}")" --custom-progress-text "$new%"
+    else
+        note "Brightness $new%" display-brightness "$new"
+    fi
+    ;;
+power-profile) # Meta+B, like Plasma: power-saver -> balanced -> performance -> power-saver
+    case $(powerprofilesctl get) in
+    power-saver) next=balanced ;;
+    balanced) next=performance ;;
+    *) next=power-saver ;;
+    esac
+    powerprofilesctl list | grep -q "$next:" || next=power-saver
+    powerprofilesctl set "$next"  # power-osd shows the change
+    ;;
+*)
+    echo "usage: fnkey vol-up|vol-down|bright-up|bright-down [step] | mute|mic-mute|power-profile" >&2
+    exit 1
+    ;;
+esac

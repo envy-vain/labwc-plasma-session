@@ -1,0 +1,9 @@
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = labwc
+
+[Action]
+Description = Checking whether patched labwc was replaced...
+When = PostTransaction
+Exec = /bin/sh -c 'pacman -Qi labwc | grep -q "patched: switcher close button" || echo "==> labwc repo update dropped the Alt+Tab close-button patch. Rerun patches/labwc/rebuild.sh from labwc-plasma-session"'

@@ -1,0 +1,21 @@
+#!/bin/bash
+# Saves the current monitor layout (as arranged in wdisplays) as a kanshi profile, so it's restored on login/hotplug.
+# Each distinct set of plugged-in monitors gets its own profile; re-running replaces that set's profile.
+cfg=$HOME/.config/kanshi/config
+touch "$cfg"
+json=$(wlr-randr --json) || exit 1
+# Profile name = sorted output names of the enabled+disabled set currently connected
+name=$(jq -r '[.[].name] | sort | join("_")' <<<"$json" | tr -c 'A-Za-z0-9_\n' '_')
+block=$(jq -r --arg n "$name" '
+  "profile \($n) {",
+  (.[] | if .enabled then
+     (.modes[] | select(.current)) as $m |
+     "  output \"\(.name)\" enable mode \($m.width)x\($m.height)@\($m.refresh)Hz position \(.position.x),\(.position.y) scale \(.scale) transform \(.transform)"
+   else "  output \"\(.name)\" disable" end),
+  "}"' <<<"$json")
+# Drop any old profile with the same name, append the new one
+awk -v n="profile $name {" '$0==n{skip=1} !skip{print} skip&&/^}/{skip=0}' "$cfg" > "$cfg.tmp"
+printf '%s\n' "$block" >> "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
+pkill -HUP -x kanshi || (kanshi >/dev/null 2>&1 &)
+notify-send -i video-display "Monitor layout saved" "Profile: $name" 2>/dev/null
+echo "$block"

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Save Monitor Layout
+Comment=Keep the current wdisplays arrangement after reboot/replug
+Exec=@BIN@/save-monitor-layout
+Icon=video-display
+Categories=Settings;HardwareSettings;

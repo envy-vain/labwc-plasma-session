@@ -1,0 +1,18 @@
+#!/bin/sh
+# Called by swayidle (labwc autostart). `off`: blank the screens, but wait while any
+# media player (Firefox, mpv...) is playing. `on`: cancel the wait and wake the screens.
+PIDF=${XDG_RUNTIME_DIR:-/tmp}/idle-screen-off.pid
+case "$1" in
+  off)
+    (
+      while playerctl -a status 2>/dev/null | grep -qx Playing; do sleep 20; done
+      wlopm --off '*'
+      rm -f "$PIDF"
+    ) &
+    echo $! > "$PIDF"
+    ;;
+  on)
+    [ -f "$PIDF" ] && kill "$(cat "$PIDF")" 2>/dev/null; rm -f "$PIDF"
+    wlopm --on '*'
+    ;;
+esac

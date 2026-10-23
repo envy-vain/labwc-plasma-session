@@ -1,0 +1,58 @@
+# Based on the Arch/CachyOS labwc PKGBUILD (Peter Jung <ptr1337@archlinux.org>, Lex Black <autumn-wind@web.de>)
+# plus switcher-close-button.patch. Build with ./rebuild.sh.
+
+pkgname=labwc
+pkgver=0.20.2
+pkgrel=1.9
+pkgdesc='stacking wayland compositor with look and feel from openbox (patched: switcher close button)'
+url="https://github.com/labwc/labwc"
+arch=('x86_64')
+license=('GPL-2.0-only')
+depends=(
+  cairo
+  glib2
+  glibc
+  libinput
+  libpng
+  librsvg
+  libsfdo
+  libwlroots-0.20.so
+  libxcb
+  libxkbcommon
+  libxml2
+  pango
+  pixman
+  seatd
+  ttf-font
+  wayland
+)
+makedepends=(
+  git
+  meson
+  scdoc
+  wayland-protocols
+  xorg-xwayland
+)
+optdepends=(
+  "bemenu: default launcher via Alt+F3"
+  "xorg-xwayland: X11 application support"
+)
+source=("git+https://github.com/labwc/labwc#tag=${pkgver}"
+        switcher-close-button.patch)
+b2sums=('SKIP'   # git tag: makepkg checks out that exact tag
+        'SKIP')
+
+prepare() {
+  # close button (x) + Delete key in the Alt+Tab thumbnail switcher
+  patch -d "$pkgname" -p1 < switcher-close-button.patch
+}
+
+
+build() {
+  arch-meson -Dman-pages=enabled "$pkgname" build
+  meson compile -C build
+}
+
+package() {
+  meson install -C build --destdir "$pkgdir"
+}

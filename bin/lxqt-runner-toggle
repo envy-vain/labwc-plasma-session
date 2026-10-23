@@ -1,0 +1,12 @@
+#!/bin/sh
+# Alt+F2 in labwc: start lxqt-runner on demand, show it, and let it quit 45 s after the last press.
+if ! busctl --user status org.lxqt.lxqt-runner >/dev/null 2>&1; then
+  setsid -f lxqt-runner >/dev/null 2>&1
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    busctl --user status org.lxqt.lxqt-runner >/dev/null 2>&1 && break
+    sleep 0.05
+  done
+fi
+lxqt-runner >/dev/null 2>&1 &   # a second instance asks the running one to show its dialog
+systemctl --user stop lxqt-runner-reap.timer >/dev/null 2>&1
+systemd-run --user --quiet --collect --on-active=45s --unit=lxqt-runner-reap pkill -u "$USER" -x lxqt-runner

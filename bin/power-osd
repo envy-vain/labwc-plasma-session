@@ -1,0 +1,32 @@
+#!/bin/sh
+# Centered OSD (swayosd, or a notification without it) when the charger is plugged/unplugged or the
+# power profile changes (Meta+B, quickpanel, ultra-low-power...). Started from labwc autostart.
+show() {
+    if command -v swayosd-client >/dev/null; then swayosd-client --custom-message "$1" --custom-icon "$2"
+    else notify-send -t 2000 -i "$2" "$1"; fi >/dev/null 2>&1
+}
+
+bat=
+for b in /sys/class/power_supply/*; do
+    [ "$(cat "$b/type" 2>/dev/null)" = Battery ] && { bat=$b; break; }
+done
+
+if [ -n "$bat" ]; then
+    gdbus monitor --system --dest org.freedesktop.UPower --object-path /org/freedesktop/UPower |
+      while read -r line; do
+        case "$line" in
+          *"'OnBattery': <true>"*)  show "On battery — $(cat "$bat/capacity")%" battery-good ;;
+          *"'OnBattery': <false>"*) show "Charging — $(cat "$bat/capacity")%" battery-good-charging ;;
+        esac
+      done &
+fi
+
+gdbus monitor --system --dest net.hadess.PowerProfiles --object-path /net/hadess/PowerProfiles |
+  while read -r line; do
+    case "$line" in
+      *"'ActiveProfile': <'power-saver'>"*) show "Power Saver" battery-profile-power-saver ;;
+      *"'ActiveProfile': <'balanced'>"*)    show "Balanced" battery-profile-balanced ;;
+      *"'ActiveProfile': <'performance'>"*) show "Performance" battery-profile-performance ;;
+    esac
+  done &
+wait

@@ -1,0 +1,10 @@
+# Centered OSD for volume/brightness/power (labwc autostart starts swayosd-server; ~/.local/bin/fnkey and power-osd feed it)
+[server]
+top_margin = 0.5
+max_volume = 150
+min_brightness = 1
+show_percentage = true
+keyboard_backlight = true
+duration = 1200
+
+[client]
