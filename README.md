@@ -109,8 +109,8 @@ It puts back every file the installer replaced and deletes the ones it created. 
 
 Made by [envy-vain](https://github.com/envy-vain).
 
-**LLM disclaimer:** much of the code in this repo was written with help from an LLM (Claude, by Anthropic). I
-directed it, tested every piece on my own laptop, and use this session every day. Read scripts before you
+**LLM disclaimer:** I used an LLM (Claude, by Anthropic) to help polish this project and make it look better.
+I built it, tested every piece on my own laptop, and use this session every day. Read scripts before you
 run them, as with anything from the internet.
 
 The labwc patch is GPL-2.0-only, like labwc itself. Everything else is [MIT](LICENSE).
